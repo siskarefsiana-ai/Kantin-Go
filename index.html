@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>KantinGo - Mahasiswa</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
   <style>
     body { font-family: Arial, sans-serif; max-width:900px; margin:20px auto; padding:10px; }
     .card { border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; }
@@ -13,6 +13,7 @@
   </style>
 </head>
 <body>
+
   <h1>KantinGo — Pesan Makanan (Mahasiswa)</h1>
 
   <div class="card">
@@ -30,103 +31,118 @@
   <div class="card">
     <h3>Cek Status Pesanan</h3>
     <label>Masukkan ID Pesanan</label>
-    <input id="check_id" placeholder="isi id pesanan yang diterima setelah pesan">
+    <input id="check_id" placeholder="ID pesanan">
     <button onclick="checkOrder()">Cek</button>
     <div id="orderInfo"></div>
   </div>
 
   <div class="card">
-    <h3>Antrian Saat Ini (live)</h3>
+    <h3>Antrian Saat Ini</h3>
     <div id="queueSummary">Memuat...</div>
     <ul id="queueList"></ul>
   </div>
 
 <script>
-const socket = io();
+// =============================
+//   POLLING SETIAP 3 DETIK
+// =============================
+setInterval(loadQueue, 3000);
+loadQueue();  // run saat halaman dibuka
 
-socket.on('connect', ()=> {
-  console.log('connected to server');
-});
+async function loadQueue() {
+  const resp = await fetch('/api/queue');
+  const data = await resp.json();
 
-socket.on('queue_update', data => {
   document.getElementById('queueSummary').innerText =
-    `Queued: ${data.queued} | Preparing: ${data.preparing} | Ready to pickup: ${data.ready}`;
+    `Queued: ${data.queued} | Preparing: ${data.preparing} | Ready: ${data.ready}`;
+
   const ul = document.getElementById('queueList');
-  ul.innerHTML = '';
+  ul.innerHTML = "";
+
   data.list.forEach(o => {
     const li = document.createElement('li');
     li.textContent = `#${o.id} — ${o.name} — ${o.items} — status: ${o.status}`;
     ul.appendChild(li);
   });
-});
+}
 
-socket.on('order_updated', data => {
-  // if user's displayed order matches, refresh
-  const orderInfo = JSON.parse(localStorage.getItem('latestOrder') || 'null');
-  if (orderInfo && orderInfo.id === data.id) {
-    showOrderData(data);
-    if (data.status === 'ready') {
-      alert('Pesananmu sudah siap! (ID: ' + data.id + ')');
-    }
-  }
-});
 
-// New order event could be used to notify admins etc
-socket.on('new_order', data => {
-  console.log('new order', data);
-});
-
+// =============================
+//   KIRIM PESANAN
+// =============================
 async function placeOrder() {
   const nim = document.getElementById('nim').value.trim();
   const name = document.getElementById('name').value.trim();
   const items = document.getElementById('items').value.trim();
+
   if (!nim || !name || !items) {
-    alert('Lengkapi semua field!');
+    alert("Lengkapi semua field!");
     return;
   }
+
   const resp = await fetch('/api/orders', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({nim, name, items})
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ nim, name, items })
   });
+
   const data = await resp.json();
+
   if (!resp.ok) {
-    alert(data.error || 'Gagal pesan');
+    alert(data.error || "Gagal membuat pesanan");
     return;
   }
-  document.getElementById('orderResult').innerText = 'Pesanan terkirim. ID pesanan: ' + data.order.id;
-  // simpan id pesanan di localStorage untuk realtime update
-  localStorage.setItem('latestOrder', JSON.stringify({id: data.order.id}));
+
+  document.getElementById('orderResult').innerText =
+    'Pesanan terkirim! ID pesanan: ' + data.order.id;
+
+  localStorage.setItem("latestOrder", data.order.id);
+
   showOrderData(data.order);
 }
 
+
+// =============================
+//   CEK STATUS PESANAN
+// =============================
 async function checkOrder() {
-  const id = parseInt(document.getElementById('check_id').value);
-  if (!id) { alert('Masukkan ID yang valid'); return; }
-  const resp = await fetch('/api/orders/' + id);
-  if (!resp.ok) {
-    const e = await resp.json();
-    alert(e.error || 'Pesanan tidak ditemukan');
+  const id = document.getElementById("check_id").value;
+
+  if (!id) {
+    alert("Masukkan ID pesanan dengan benar");
     return;
   }
+
+  const resp = await fetch('/api/orders/' + id);
   const data = await resp.json();
+
+  if (!resp.ok) {
+    alert(data.error || "Pesanan tidak ditemukan");
+    return;
+  }
+
   showOrderData(data);
-  localStorage.setItem('latestOrder', JSON.stringify({id: data.id}));
+  localStorage.setItem("latestOrder", id);
 }
 
+
+// =============================
+//   TAMPILKAN DETAIL PESANAN
+// =============================
 function showOrderData(o) {
   const container = document.getElementById('orderInfo');
-  const pos = o.position !== undefined ? ('Posisi antrian: ' + (o.position || 'Sudah siap/diambil')) : '';
   container.innerHTML = `
     <p><strong>ID:</strong> ${o.id}</p>
     <p><strong>Nama:</strong> ${o.name} (${o.nim})</p>
     <p><strong>Items:</strong> ${o.items}</p>
-    <p class="status"><strong>Status:</strong> ${o.status} ${pos ? '<br>' + pos : ''}</p>
+    <p class="status"><strong>Status:</strong> ${o.status}</p>
   `;
+
   if (o.status === 'ready') {
     alert('Pesananmu sudah siap! ID: ' + o.id);
   }
 }
 </script>
+
 </body>
 </html>
