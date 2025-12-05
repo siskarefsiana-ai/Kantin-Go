@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>KantinGo - Admin</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    body { font-family: Arial; padding:20px; max-width:1000px; margin:auto; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+    button { padding:6px 10px; margin-right:6px; }
+  </style>
+</head>
+<body>
+  <h1>Panel Petugas KANTIN (Admin)</h1>
+  <p>Realtime antrian — ubah status pesanan menjadi preparing / ready / picked</p>
+
+  <div id="summary">Memuat...</div>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Waktu</th><th>NIM - Nama</th><th>Pesanan</th><th>Status</th><th>Aksi</th></tr>
+    </thead>
+    <tbody id="ordersTable"></tbody>
+  </table>
+
+<script>
+const socket = io();
+
+socket.on('queue_update', data => {
+  document.getElementById('summary').innerText =
+    `Queued: ${data.queued} | Preparing: ${data.preparing} | Ready to pickup: ${data.ready}`;
+  renderOrders(data.list);
+});
+
+socket.on('order_updated', data => {
+  // optionally update row
+  fetchAndRender();
+});
+
+function renderOrders(list) {
+  const tbody = document.getElementById('ordersTable');
+  tbody.innerHTML = '';
+  list.forEach(o => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${o.id}</td>
+      <td>${new Date(o.created_at).toLocaleString()}</td>
+      <td>${o.nim} - ${o.name}</td>
+      <td>${o.items}</td>
+      <td id="status-${o.id}">${o.status}</td>
+      <td>
+        <button onclick="setStatus(${o.id}, 'preparing')">Preparing</button>
+        <button onclick="setStatus(${o.id}, 'ready')">Ready</button>
+        <button onclick="setStatus(${o.id}, 'picked')">Picked</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function setStatus(id, status) {
+  const resp = await fetch('/api/orders/' + id + '/status', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status})
+  });
+  if (!resp.ok) {
+    alert('Gagal mengubah status');
+    return;
+  }
+  const data = await resp.json();
+  document.getElementById('status-' + id).innerText = data.status;
+}
+
+async function fetchAndRender() {
+  const resp = await fetch('/api/orders');
+  const all = await resp.json();
+  renderOrders(all.filter(o => ['queued','preparing'].includes(o.status)));
+}
+
+// initial fetch
+fetchAndRender();
+</script>
+</body>
+</html>
